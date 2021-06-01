@@ -1,5 +1,6 @@
 package com.xiaojukeji.kafka.manager.common.zookeeper.znode;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -7,6 +8,8 @@ import java.util.List;
  * @date 20/1/15
  */
 public class ReassignmentJsonData {
+    public static final Integer REASSIGNMENT_JSON_DATA_VERSION = 1;
+
     private Integer version;
 
     private List<ReassignmentElemData> partitions;
@@ -33,5 +36,12 @@ public class ReassignmentJsonData {
                 "version=" + version +
                 ", partitions=" + partitions +
                 '}';
+    }
+
+    public static ReassignmentJsonData newInstance() {
+        ReassignmentJsonData reassignmentJsonData = new ReassignmentJsonData();
+        reassignmentJsonData.setVersion(ReassignmentJsonData.REASSIGNMENT_JSON_DATA_VERSION);
+        reassignmentJsonData.setPartitions(new ArrayList<>());
+        return reassignmentJsonData;
     }
 }
