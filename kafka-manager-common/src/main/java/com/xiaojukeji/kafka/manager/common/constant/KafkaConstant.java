@@ -17,6 +17,8 @@ public class KafkaConstant {
 
     public static final String RETENTION_MS_KEY = "retention.ms";
 
+    public static final String WITHOUT_RACK_INFO_NAME = "";
+
     private KafkaConstant() {
     }
 }

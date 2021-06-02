@@ -1,5 +1,6 @@
 package com.xiaojukeji.kafka.manager.common.entity.ao.reassign;
 
+import com.xiaojukeji.kafka.manager.common.constant.KafkaConstant;
 import com.xiaojukeji.kafka.manager.common.utils.ValidateUtils;
 
 import java.util.ArrayList;
@@ -15,7 +16,7 @@ public class AssignmentCount {
     private Integer replicaNum;
 
     /**
-     * 增加randomIdx用于排序, 从而在多次调用的时候，减少在某个brokerId堆积的情况的出现
+     * 增加randomIdx用于排序, 从而在多次调用的时候，减少在某个brokerId堆积的情况的出现. 这里仅是一维的随机, 没有对每一个位置的replica进行随机
      */
     private Integer randomIdx;
 
@@ -32,7 +33,7 @@ public class AssignmentCount {
     public AssignmentCount(Integer randomIdx, Integer brokerId, String rack, int replicaNum) {
         this.brokerId = brokerId;
         if (ValidateUtils.isBlank(rack)) {
-            this.rack = "";
+            this.rack = KafkaConstant.WITHOUT_RACK_INFO_NAME;
         } else {
             this.rack = rack;
         }

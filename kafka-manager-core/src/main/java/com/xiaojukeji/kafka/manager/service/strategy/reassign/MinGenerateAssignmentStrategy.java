@@ -1,5 +1,6 @@
 package com.xiaojukeji.kafka.manager.service.strategy.reassign;
 
+import com.xiaojukeji.kafka.manager.common.constant.KafkaConstant;
 import com.xiaojukeji.kafka.manager.common.entity.ao.reassign.AssignmentCount;
 import com.xiaojukeji.kafka.manager.common.utils.JsonUtils;
 import com.xiaojukeji.kafka.manager.common.utils.ValidateUtils;
@@ -92,7 +93,7 @@ public abstract class MinGenerateAssignmentStrategy {
                                                                      Map<Integer, AssignmentCount> originBrokerAssignCountMap,
                                                                      Integer minRackNumPerPartition,
                                                                      boolean minFocus) {
-        Map<Integer, AssignmentCount> destBrokerAssignCountMap = initDestAssignCountMap(clusterId, brokerIdSet, replicaNum); // 初始化目标broker的分区分布统计信息
+        Map<Integer, AssignmentCount> destBrokerAssignCountMap = checkAndInitDestAssignCountMap(clusterId, brokerIdSet, replicaNum, minRackNumPerPartition); // 初始化目标broker的分区分布统计信息
 
         // 每个broker针对每个位置的副本, 最多允许有多少副本
         int maxReplicaNum = partitionNum / destBrokerAssignCountMap.size();
@@ -205,17 +206,29 @@ public abstract class MinGenerateAssignmentStrategy {
         return true;
     }
 
-    private static Map<Integer, AssignmentCount> initDestAssignCountMap(Long clusterId, Set<Integer> brokerIdSet, Integer replicaNum) {
+    private static Map<Integer, AssignmentCount> checkAndInitDestAssignCountMap(Long clusterId, Set<Integer> brokerIdSet, Integer replicaNum, Integer minRackNumPerPartition) {
         if (ValidateUtils.isEmptySet(brokerIdSet)) {
             return new HashMap<>();
         }
+
+        Set<String> rackSet = new HashSet<>();
 
         Map<Integer, AssignmentCount> minAssignCountMap = new HashMap<>();
 
         Random random = new Random();
         for (Integer brokerId: brokerIdSet) {
             minAssignCountMap.put(brokerId, initMinAssignCount(clusterId, brokerId, random.nextInt(2013), true, replicaNum));
+            rackSet.add(minAssignCountMap.get(brokerId).getRack());
         }
+
+        if (rackSet.contains(KafkaConstant.WITHOUT_RACK_INFO_NAME) && minRackNumPerPartition > 1) {
+            // 部分broker没有rack信息, 直接抛出异常
+            throw new AdminOperationException("exist broker which without rack");
+        } else if (rackSet.size() < minRackNumPerPartition) {
+            // broker不满足最小rack的要求
+            throw new AdminOperationException("rack size less than min rack num");
+        }
+
         return minAssignCountMap;
     }
 
