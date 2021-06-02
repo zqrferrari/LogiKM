@@ -105,7 +105,7 @@ public abstract class MinGenerateAssignmentStrategy {
         Map<Integer, List<Integer>> newAssignmentMap = new HashMap<>();
 
         // 遍历每个位置的副本, 第0位是优先leader, 第1位是第一个follower, ......
-        for (int idx = 0; idx < replicaNum; ++idx) {
+        for (int replicaIdx = 0; replicaIdx < replicaNum; ++replicaIdx) {
 
             // 无需移动副本, 先保证无需移动的, 都分配好了, 后续就不会和需要迁移的冲突了
             for (Map.Entry<Integer, AssignmentCount> srcEntry: originBrokerAssignCountMap.entrySet()) {
@@ -115,49 +115,54 @@ public abstract class MinGenerateAssignmentStrategy {
                     continue;
                 }
 
-                for (Integer partitionId: srcEntry.getValue().getAssignList().get(idx)) {
-                    if (destMinAssignCount.getAssignList().get(idx).size() >= maxReplicaNum) {
+                for (Integer partitionId: srcEntry.getValue().getReplicaIdxAssignList().get(replicaIdx)) {
+                    if (destMinAssignCount.getReplicaIdxAssignList().get(replicaIdx).size() >= maxReplicaNum) {
                         // 已经满足分配均衡的需求了, 则该broker不会再加分区
                         break;
                     }
                     // 检查当前分区分配到该broker是否合理, 合理直接加入
-                    checkAndAssignReplica(idx, replicaNum, partitionId, minRackNumPerPartition, srcEntry.getKey(), newAssignmentMap, destBrokerAssignCountMap);
+                    checkAndAssignReplica(replicaIdx, replicaNum, partitionId, minRackNumPerPartition, srcEntry.getKey(), newAssignmentMap, destBrokerAssignCountMap);
                 }
                 // 移除已经分配的分区, 遗留的都需要进行迁移
-                srcEntry.getValue().getAssignList().get(idx).removeAll(destMinAssignCount.getAssignList().get(idx));
+                srcEntry.getValue().getReplicaIdxAssignList().get(replicaIdx).removeAll(destMinAssignCount.getReplicaIdxAssignList().get(replicaIdx));
             }
 
             // 针对当前位置的副本的分布情况, 对分配统计进行排序, 分配少的broker排在前面, 优先被使用
-            final Integer replicaIdx = idx;
+            final Integer tmpReplicaIdx = replicaIdx;
             PriorityQueue<AssignmentCount> priorityQueue = new PriorityQueue<>(new Comparator<AssignmentCount>() {
                 @Override
                 public int compare(AssignmentCount o1, AssignmentCount o2) {
                     if (o1.getBrokerId().equals(o2.getBrokerId())) {
                         return 0;
                     }
-                    if (o1.getAssignList().get(replicaIdx).size() < o2.getAssignList().get(replicaIdx).size()) {
+                    if (o1.getReplicaIdxAssignList().get(tmpReplicaIdx).size() < o2.getReplicaIdxAssignList().get(tmpReplicaIdx).size()) {
                         return -1;
-                    } else if (o1.getAssignList().get(replicaIdx).size() > o2.getAssignList().get(replicaIdx).size()) {
+                    } else if (o1.getReplicaIdxAssignList().get(tmpReplicaIdx).size() > o2.getReplicaIdxAssignList().get(tmpReplicaIdx).size()) {
+                        return 1;
+                    } else if (o1.getAssignSet().size() < o2.getAssignSet().size()) {
+                        return -1;
+                    } else if (o1.getAssignSet().size() > o2.getAssignSet().size()) {
                         return 1;
                     }
-                    if (o1.getIdx().equals(o2.getIdx())) {
+
+                    if (o1.getRandomIdx().equals(o2.getRandomIdx())) {
                         // 如果随机数还一致, 则直接使用brokerId
                         return o1.getBrokerId() - o2.getBrokerId();
                     }
-                    return o1.getIdx() - o2.getIdx();
+                    return o1.getRandomIdx() - o2.getRandomIdx();
                 }
             });
             priorityQueue.addAll(destBrokerAssignCountMap.values());
 
             // 需要移动的副本
             for (AssignmentCount originMinAssignCount: originBrokerAssignCountMap.values()) {
-                for (Integer partitionId: originMinAssignCount.getAssignList().get(idx)) {
+                for (Integer partitionId: originMinAssignCount.getReplicaIdxAssignList().get(replicaIdx)) {
                     boolean status = false;
 
                     // 遍历broker, 寻找最合适的broker, 找到则直接退出循环, 找不到时则抛出异常
                     Iterator<AssignmentCount> iterator = priorityQueue.iterator();
                     while (iterator.hasNext()) {
-                        if (checkAndAssignReplica(idx, replicaNum, partitionId, minRackNumPerPartition, iterator.next().getBrokerId(), newAssignmentMap, destBrokerAssignCountMap)) {
+                        if (checkAndAssignReplica(replicaIdx, replicaNum, partitionId, minRackNumPerPartition, iterator.next().getBrokerId(), newAssignmentMap, destBrokerAssignCountMap)) {
                             // 检查之后可以使用
                             status = true;
                             break;
@@ -180,6 +185,11 @@ public abstract class MinGenerateAssignmentStrategy {
                                                  Integer brokerId,
                                                  Map<Integer, List<Integer>> newAssignmentMap,
                                                  Map<Integer, AssignmentCount> destAssignCountMap) {
+        if (destAssignCountMap.get(brokerId).getAssignSet().contains(partitionId)) {
+            // 当前分区已经存在于该broker
+            return false;
+        }
+
         List<Integer> brokerIdList = newAssignmentMap.getOrDefault(partitionId, new ArrayList<>());
 
         Set<String> rackSet = destAssignCountMap.values().stream().filter(elem -> brokerIdList.contains(elem.getBrokerId()) || brokerId.equals(elem.getBrokerId())).map(elem -> elem.getRack()).collect(Collectors.toSet());
@@ -188,7 +198,7 @@ public abstract class MinGenerateAssignmentStrategy {
             return false;
         }
 
-        destAssignCountMap.get(brokerId).getAssignList().get(replicaIdx).add(partitionId);
+        destAssignCountMap.get(brokerId).getReplicaIdxAssignList().get(replicaIdx).add(partitionId);
 
         brokerIdList.add(brokerId);
         newAssignmentMap.put(partitionId, brokerIdList);
@@ -234,7 +244,7 @@ public abstract class MinGenerateAssignmentStrategy {
                     minAssignCount = originAssignCountMap.get(brokerIdList.get(idx));
                 }
 
-                minAssignCount.getAssignList().get(idx).add(partitionId);
+                minAssignCount.getReplicaIdxAssignList().get(idx).add(partitionId);
             }
         }
         return originAssignCountMap;
